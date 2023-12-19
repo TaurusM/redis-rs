@@ -958,7 +958,7 @@ fn setup_connection(
 
     // result is ignored, as per the command's instructions.
     // https://redis.io/commands/client-setinfo/
-    let _: RedisResult<()> = client_set_info_pipeline().query(&mut rv);
+    let _: RedisResult<Value> = client_set_info_pipeline().query(&mut rv);
 
     Ok(rv)
 }
