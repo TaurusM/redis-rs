@@ -3,8 +3,10 @@
 use crate::cmd::{cmd, cmd_len, Cmd};
 use crate::connection::ConnectionLike;
 use crate::types::{
-    from_redis_value, ErrorKind, FromRedisValue, HashSet, RedisResult, ToRedisArgs, Value,
+    from_redis_value, ErrorKind, ErrorRepr, FromRedisValue, HashSet, RedisResult, ToRedisArgs,
+    Value,
 };
+use crate::RedisError;
 
 /// Represents a redis command pipeline.
 #[derive(Clone)]
@@ -122,22 +124,22 @@ impl Pipeline {
     ///       to them. In order to clear a Pipeline object with minimal memory released/allocated,
     ///       it is necessary to call the `clear()` before inserting new commands.
     #[inline]
-    pub fn query<T: FromRedisValue>(&self, con: &mut dyn ConnectionLike) -> RedisResult<T> {
+    pub fn query(&self, con: &mut dyn ConnectionLike) -> RedisResult<Value> {
         if !con.supports_pipelining() {
             fail!((
                 ErrorKind::ResponseError,
                 "This connection does not support pipelining."
             ));
         }
-        from_redis_value(
-            &(if self.commands.is_empty() {
-                Value::Bulk(vec![])
-            } else if self.transaction_mode {
-                self.execute_transaction(con)?
-            } else {
-                self.execute_pipelined(con)?
-            }),
-        )
+        if self.commands.is_empty() {
+            Err(RedisError {
+                repr: ErrorRepr::WithDescription(ErrorKind::ExecAbortError, "command empty"),
+            })
+        } else if self.transaction_mode {
+            self.execute_transaction(con)
+        } else {
+            self.execute_pipelined(con)
+        }
     }
 
     #[cfg(feature = "aio")]
@@ -173,18 +175,19 @@ impl Pipeline {
     /// Async version of `query`.
     #[inline]
     #[cfg(feature = "aio")]
-    pub async fn query_async<C, T: FromRedisValue>(&self, con: &mut C) -> RedisResult<T>
+    pub async fn query_async<C>(&self, con: &mut C) -> RedisResult<Value>
     where
         C: crate::aio::ConnectionLike,
     {
-        let v = if self.commands.is_empty() {
-            return from_redis_value(&Value::Bulk(vec![]));
+        if self.commands.is_empty() {
+            Err(RedisError {
+                repr: ErrorRepr::WithDescription(ErrorKind::ExecAbortError, "command empty"),
+            })
         } else if self.transaction_mode {
-            self.execute_transaction_async(con).await?
+            self.execute_transaction_async(con).await
         } else {
-            self.execute_pipelined_async(con).await?
-        };
-        from_redis_value(&v)
+            self.execute_pipelined_async(con).await
+        }
     }
 
     /// This is a shortcut to `query()` that does not return a value and
@@ -203,7 +206,7 @@ impl Pipeline {
     ///       it is necessary to call the `clear()` before inserting new commands.
     #[inline]
     pub fn execute(&self, con: &mut dyn ConnectionLike) {
-        self.query::<()>(con).unwrap();
+        self.query(con).unwrap();
     }
 }
 

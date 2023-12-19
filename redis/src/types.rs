@@ -261,8 +261,8 @@ impl fmt::Debug for Value {
 /// Represents a redis error.  For the most part you should be using
 /// the Error trait to interact with this rather than the actual
 /// struct.
-pub struct RedisError {
-    repr: ErrorRepr,
+pub(crate) struct RedisError {
+    pub(crate) repr: ErrorRepr,
 }
 
 #[cfg(feature = "json")]
@@ -277,7 +277,7 @@ impl From<serde_json::Error> for RedisError {
 }
 
 #[derive(Debug)]
-enum ErrorRepr {
+pub(crate) enum ErrorRepr {
     WithDescription(ErrorKind, &'static str),
     WithDescriptionAndDetail(ErrorKind, &'static str, String),
     ExtensionError(String, String),
